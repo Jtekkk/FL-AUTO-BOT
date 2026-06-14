@@ -131,46 +131,104 @@ def _safe_name(text: str) -> str:
     return "".join(c for c in s if c.isalnum() or c in "_-") or "ai_track"
 
 
+def _ai_out_path(args, plan, seed, rev=None) -> Path:
+    if args.out:
+        base = Path(args.out)
+        return base.with_name(f"{base.stem}_rev{rev}{base.suffix}") if rev else base
+    suffix = f"_rev{rev}" if rev else ""
+    return Path("output") / f"{_safe_name(plan.title)}_seed{seed}{suffix}.mid"
+
+
+def _write_ai(song, plan, args, seed, rev=None) -> Path:
+    from .midi_export import write_midi, write_stems
+
+    out_path = _ai_out_path(args, plan, seed, rev)
+    write_midi(song, out_path)
+    print(plan.summary())
+    print("\n" + song.summary())
+    print(f"MIDI: {out_path}")
+    if args.stems:
+        stem_dir = out_path.parent / (out_path.stem + "_stems")
+        paths = write_stems(song, stem_dir, out_path.stem)
+        print(f"Stems ({len(paths)}): {stem_dir}/")
+    return out_path
+
+
+def _play_song(args, song) -> int:
+    from . import live
+
+    try:
+        target = args.port or ("virtual port" if args.virtual else "default port")
+        print(f"\nStreaming to {target} ... (Ctrl+C to stop)")
+        live.play_song(song, port_name=args.port, virtual=args.virtual)
+    except live.LiveError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _cmd_ai(args) -> int:
     from . import ai as ai_mod
 
     brief = " ".join(args.brief).strip()
     seed = args.seed if args.seed is not None else random.randrange(1_000_000)
     try:
-        director = ai_mod.AIDirector(model=args.model or ai_mod.DEFAULT_MODEL)
-        print(f"Asking {director.model} to design: {brief!r}\n")
-        if args.plan_only:
+        director = ai_mod.AIDirector(backend=args.backend, model=args.model, host=args.host)
+    except ai_mod.AIError as exc:
+        print(f"AI error: {exc}", file=sys.stderr)
+        return 1
+    print(f"[{director.planner.name}:{director.model}] designing: {brief!r}\n")
+
+    if args.plan_only:
+        try:
             print(director.plan(brief).summary())
-            return 0
+        except ai_mod.AIError as exc:
+            print(f"AI error: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    if args.chat:
+        return _cmd_ai_chat(ai_mod, director, brief, seed, args)
+
+    try:
         song, plan = director.compose(brief, seed=seed)
     except ai_mod.AIError as exc:
         print(f"AI error: {exc}", file=sys.stderr)
         return 1
+    _write_ai(song, plan, args, seed)
+    print(f"\nseed: {seed}  (re-run the render with --seed {seed})")
+    return _play_song(args, song) if args.play else 0
 
-    from .midi_export import write_midi, write_stems
 
-    out_path = Path(args.out) if args.out else \
-        Path("output") / f"{_safe_name(plan.title)}_seed{seed}.mid"
-    write_midi(song, out_path)
+def _cmd_ai_chat(ai_mod, director, brief, seed, args) -> int:
+    convo = director.conversation(seed=seed)
+    try:
+        song, plan = convo.send(brief)
+    except ai_mod.AIError as exc:
+        print(f"AI error: {exc}", file=sys.stderr)
+        return 1
+    _write_ai(song, plan, args, seed, rev=0)
+    print('\nRefine it (e.g. "make it darker", "add an arp", "faster").')
+    print("Empty line or Ctrl-D to finish.\n")
 
-    print(plan.summary())
-    print("\n" + song.summary())
-    print(f"\nseed: {seed}  (re-run with --seed {seed} to reproduce the render)")
-    print(f"MIDI: {out_path}")
-    if args.stems:
-        stem_dir = out_path.parent / (out_path.stem + "_stems")
-        paths = write_stems(song, stem_dir, out_path.stem)
-        print(f"Stems ({len(paths)}): {stem_dir}/")
-
-    if args.play:
-        from . import live
+    rev = 1
+    while True:
         try:
-            target = args.port or ("virtual port" if args.virtual else "default port")
-            print(f"\nStreaming to {target} ... (Ctrl+C to stop)")
-            live.play_song(song, port_name=args.port, virtual=args.virtual)
-        except live.LiveError as exc:
-            print(f"\n{exc}", file=sys.stderr)
-            return 1
+            instruction = input("refine> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not instruction or instruction.lower() in {"done", "quit", "exit", "q"}:
+            break
+        try:
+            song, plan = convo.send(instruction)
+        except ai_mod.AIError as exc:
+            print(f"AI error: {exc}", file=sys.stderr)
+            continue
+        print()
+        _write_ai(song, plan, args, seed, rev=rev)
+        rev += 1
+    print(f"\nDone. seed: {seed}")
     return 0
 
 
@@ -218,7 +276,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_ai.add_argument("-o", "--out", default=None, help="output .mid path")
     p_ai.add_argument("--stems", action="store_true", help="also write one .mid per track")
     p_ai.add_argument("--seed", type=int, default=None, help="seed for the render step")
-    p_ai.add_argument("--model", default=None, help="Claude model (default: claude-opus-4-8)")
+    p_ai.add_argument("--backend", choices=["claude", "ollama"], default="claude",
+                      help="LLM backend (default: claude; ollama runs offline)")
+    p_ai.add_argument("--model", default=None,
+                      help="model name (default: claude-opus-4-8, or llama3.1 for ollama)")
+    p_ai.add_argument("--host", default="http://localhost:11434",
+                      help="Ollama host (for --backend ollama)")
+    p_ai.add_argument("-i", "--chat", action="store_true",
+                      help="interactive refine loop (\"make it darker\", \"add an arp\")")
     p_ai.add_argument("--plan-only", action="store_true",
                       help="print the AI's plan without rendering MIDI")
     p_ai.add_argument("--play", action="store_true",

@@ -89,6 +89,7 @@ def compose(
     bass_style: Optional[str] = None,
     chord_style: Optional[str] = None,
     arp_mode: Optional[str] = None,
+    drum_pattern: Optional[dict] = None,
 ) -> Song:
     """Compose a full song.
 
@@ -108,6 +109,8 @@ def compose(
             random pick from the genre.
         tracks: which lanes to include (subset of drums/bass/chords/melody/arp).
         swing, sevenths, bass_style, chord_style, arp_mode: per-element overrides.
+        drum_pattern: a ``{voice: 16-step-string}`` custom groove (overrides the
+            genre's drum style).
     """
     rng = random.Random(seed)
     g: Genre = get_genre(genre)
@@ -152,7 +155,8 @@ def compose(
 
         if "drums" in live:
             n = generate_drums(g.drum_style, sec_bars, beats_per_bar=beats_per_bar,
-                               swing=swing_amt, fill_every=g.fill_every, rng=rng)
+                               swing=swing_amt, fill_every=g.fill_every,
+                               pattern=drum_pattern or None, rng=rng)
             lane_tracks["drums"].extend(_shift(n, offset, intensity))
         if "bass" in live:
             n = generate_bass(chords, sec_bars, beats_per_bar=beats_per_bar,

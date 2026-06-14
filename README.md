@@ -163,9 +163,10 @@ Override anything from the CLI: `--key`, `--scale`, `--tempo`, `--bars`,
 
 Describe a song in plain English and let **Claude** design it. The LLM does the
 *reasoning and creation* — it interprets your brief and authors a concrete plan
-(key, scale, tempo, an original chord progression, instrumentation, groove) — and
-the deterministic engine *renders* that plan to MIDI. You get the creativity of an
-LLM with output that's always musically valid and reproducible from a seed.
+(key, scale, tempo, an original chord progression, instrumentation — even its own
+drum groove) — and the deterministic engine *renders* that plan to MIDI. You get
+the creativity of an LLM with output that's always musically valid and reproducible
+from a seed.
 
 ```bash
 pip install anthropic                 # or: pip install -e ".[ai]"
@@ -204,6 +205,33 @@ back as **validated structured JSON**, so it always maps cleanly onto the engine
 out-of-range values are clamped, unknown genres fall back to sensible defaults. No
 API key? Everything else in FL Auto Bot still works; the AI layer is purely additive.
 
+### Refine it conversationally
+
+Keep the context and adjust in plain English — each instruction updates the plan and
+writes a new revision (`*_rev1.mid`, `*_rev2.mid`, …):
+
+```bash
+python -m flautobot ai "boom-bap hip hop in C minor" --chat
+# refine> make it darker and add more swing
+# refine> add an arp and drop the melody
+# refine> (blank line to finish)
+```
+
+### Run fully offline (Ollama)
+
+No API key, no cloud — use a local model via [Ollama](https://ollama.com):
+
+```bash
+ollama serve &                 # start the local server
+ollama pull llama3.1           # any chat model works
+
+python -m flautobot ai "lofi at 72 bpm" --backend ollama
+python -m flautobot ai "hard techno" --backend ollama --model qwen2.5 --chat
+```
+
+The validation layer keeps even smaller local models reliable — anything off-spec is
+clamped to a musical default. (`--backend ollama` needs no extra Python packages.)
+
 ---
 
 ## How it works
@@ -221,7 +249,7 @@ flautobot/
 │   ├── chords.py    pads / stabs with simple voice-leading
 │   ├── melody.py    chord-tone-anchored, stepwise, motif-based melodies
 │   └── arp.py       up / down / updown / random arpeggios
-├── ai.py            AI director: brief → Claude → validated plan → render
+├── ai.py            AI director: brief → Claude/Ollama → validated plan → render
 ├── midi_export.py   Song → Standard MIDI File(s) via mido
 ├── live.py          real-time MIDI streaming into FL Studio (python-rtmidi)
 └── cli.py           the `flautobot` command
@@ -239,7 +267,7 @@ A `seed` makes every part of the generation reproducible.
 
 ```bash
 pip install -r requirements.txt pytest
-pytest                 # 61 tests: theory, generators, arrangement, MIDI export, AI
+pytest                 # 67 tests: theory, generators, arrangement, MIDI export, AI
 python examples/make_a_track.py
 ```
 

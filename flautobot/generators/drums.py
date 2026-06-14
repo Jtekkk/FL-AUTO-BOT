@@ -12,7 +12,7 @@ feel robotic.
 from __future__ import annotations
 
 import random
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ..song import Note
 
@@ -97,23 +97,28 @@ def generate_drums(
     swing: float = 0.0,
     humanize: float = 0.04,
     fill_every: int = 0,
+    pattern: Optional[Dict[str, str]] = None,
     rng: random.Random | None = None,
 ) -> List[Note]:
     """Generate ``bars`` worth of drum notes for ``style``.
 
     Args:
-        style: a key of :data:`DRUM_STYLES`.
+        style: a key of :data:`DRUM_STYLES` (ignored when ``pattern`` is given).
         bars: how many bars to render.
         swing: 0..1, delays every other 16th to create a shuffle.
         humanize: 0..1, adds subtle timing/velocity variation.
         fill_every: if > 0, add a snare/tom fill on the last beat of every
             Nth bar (e.g. ``4`` -> a fill before each new 4-bar phrase).
+        pattern: a custom ``{voice: 16-step-string}`` map (same format as
+            :data:`DRUM_STYLES`) to use instead of a named style -- this is how
+            the AI director plays its own authored groove.
         rng: optional seeded ``random.Random`` for reproducible output.
     """
-    if style not in DRUM_STYLES:
-        raise ValueError(f"Unknown drum style {style!r}. Options: {sorted(DRUM_STYLES)}")
     rng = rng or random.Random()
-    pattern = DRUM_STYLES[style]
+    if pattern is None:
+        if style not in DRUM_STYLES:
+            raise ValueError(f"Unknown drum style {style!r}. Options: {sorted(DRUM_STYLES)}")
+        pattern = DRUM_STYLES[style]
     step_beats = beats_per_bar / STEPS_PER_BAR
     swing_delay = swing * step_beats * 0.5
 
@@ -121,6 +126,8 @@ def generate_drums(
     for bar in range(bars):
         bar_start = bar * beats_per_bar
         for voice, steps in pattern.items():
+            if voice not in DRUM_MAP:
+                continue
             pitch = DRUM_MAP[voice]
             for i, ch in enumerate(steps):
                 if ch not in _VEL:

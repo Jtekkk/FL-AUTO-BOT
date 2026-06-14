@@ -13,7 +13,7 @@ stream straight into FL Studio over a virtual MIDI port.
 
 from __future__ import annotations
 
-from .ai import AIDirector, AIError, SongPlan, render_plan
+from .ai import AIDirector, AIError, Conversation, SongPlan, render_plan
 from .arrange import compose
 from .genres import GENRES, get_genre, list_genres
 from .midi_export import song_to_midifile, write_midi, write_stems
@@ -33,6 +33,7 @@ __all__ = [
     "list_genres",
     "GENRES",
     "AIDirector",
+    "Conversation",
     "SongPlan",
     "render_plan",
     "AIError",

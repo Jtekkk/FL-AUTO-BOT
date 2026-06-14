@@ -5,6 +5,10 @@ test the plan validation and the plan -> MIDI rendering bridge, plus the
 ``compose`` override path the director relies on.
 """
 
+import json
+
+import pytest
+
 import flautobot
 from flautobot import compose
 from flautobot.ai import SongPlan, render_plan
@@ -92,5 +96,106 @@ def test_render_plan_is_reproducible_with_seed():
 
 
 def test_package_exposes_ai_symbols():
-    for name in ("AIDirector", "SongPlan", "render_plan", "AIError"):
+    for name in ("AIDirector", "Conversation", "SongPlan", "render_plan", "AIError"):
         assert hasattr(flautobot, name)
+
+
+# --- custom drum patterns ----------------------------------------------------
+
+KICK_4 = "X...X...X...X..."  # 16 steps, four-on-the-floor
+
+
+def test_parse_drum_pattern_validates():
+    from flautobot.ai import _parse_drum_pattern
+
+    out = _parse_drum_pattern([
+        {"voice": "kick", "steps": KICK_4},          # ok
+        {"voice": "snare", "steps": "....X......."},  # wrong length -> drop
+        {"voice": "bogus", "steps": "x" * 16},        # unknown voice -> drop
+        {"voice": "clap", "steps": "z" * 16},         # bad chars -> drop
+        "not-a-dict",                                  # skipped
+    ])
+    assert out == {"kick": KICK_4}
+    assert _parse_drum_pattern(None) == {}
+
+
+def test_generate_drums_uses_custom_pattern():
+    from flautobot.generators.drums import DRUM_MAP, generate_drums
+
+    notes = generate_drums("house", 1, pattern={"kick": KICK_4}, humanize=0.0)
+    assert {n.pitch for n in notes} == {DRUM_MAP["kick"]}
+    assert len(notes) == 4
+
+
+def test_render_plan_custom_drums_replaces_genre_groove():
+    from flautobot.generators.drums import DRUM_MAP
+
+    plan = SongPlan.from_response({
+        "genre": "house", "key": "C", "bars": 8, "tracks": ["drums"],
+        "drum_pattern": [{"voice": "kick", "steps": KICK_4}],
+    })
+    assert plan.drum_pattern == {"kick": KICK_4}
+    song = render_plan(plan, seed=1)
+    drums = next(t for t in song.tracks if t.name == "Drums")
+    pitches = {n.pitch for n in drums.notes}
+    assert DRUM_MAP["kick"] in pitches
+    assert DRUM_MAP["clap"] not in pitches      # genre's clap is gone -> custom won
+
+
+# --- backends & conversation (no network) -----------------------------------
+
+class _FakePlanner:
+    """Stand-in backend that returns canned JSON and records the messages."""
+
+    name = "fake"
+    model = "fake-model"
+
+    def __init__(self, payloads):
+        self.payloads = list(payloads)
+        self.calls = []
+
+    def complete(self, system, messages, schema):
+        self.calls.append([dict(m) for m in messages])
+        return self.payloads.pop(0)
+
+
+def test_backend_selection_and_unknown_backend():
+    from flautobot.ai import AIDirector, AIError, OllamaPlanner
+
+    director = AIDirector(backend="ollama", model="llama3.1")  # no network at build
+    assert director.planner.name == "ollama"
+    assert isinstance(director.planner, OllamaPlanner)
+    assert director.model == "llama3.1"
+    with pytest.raises(AIError):
+        AIDirector(backend="gpt-9000")
+
+
+def test_conversation_accumulates_history_and_renders():
+    from flautobot.ai import AIDirector
+
+    p1 = json.dumps({"title": "Sunrise", "genre": "house", "key": "A", "bars": 16})
+    p2 = json.dumps({"title": "Midnight", "genre": "techno", "key": "A",
+                     "scale": "phrygian", "bars": 16})
+    director = AIDirector(backend="ollama")
+    director.planner = _FakePlanner([p1, p2])
+
+    convo = director.conversation(seed=1)
+    song1, plan1 = convo.send("uplifting house")
+    assert plan1.genre == "house" and song1.note_count() > 0
+
+    song2, plan2 = convo.send("make it darker techno")
+    assert plan2.genre == "techno"
+    # The refinement call sees the full prior turn plus the new instruction.
+    roles = [m["role"] for m in director.planner.calls[-1]]
+    assert roles == ["user", "assistant", "user"]
+
+
+def test_director_salvages_json_wrapped_in_prose():
+    from flautobot.ai import AIDirector
+
+    director = AIDirector(backend="ollama")
+    director.planner = _FakePlanner(
+        ['Sure! Here is your plan:\n{"genre": "lofi", "key": "C"}\nEnjoy.'])
+    convo = director.conversation()
+    _, plan = convo.send("lofi please")
+    assert plan.genre == "lofi"
