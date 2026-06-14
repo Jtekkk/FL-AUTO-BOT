@@ -64,6 +64,9 @@ python -m flautobot live -g techno -k E --virtual
 
 # Or just describe what you want and let Claude design it (see "AI" below)
 python -m flautobot ai "uplifting summer house in F# minor, 124 bpm"
+
+# Prefer clicking? Launch the desktop GUI — it wraps all of the above
+python -m flautobot gui
 ```
 
 Output lands in `./output/`. Every run prints its `seed` so you can reproduce or
@@ -81,6 +84,26 @@ song = compose(genre="house", key="A", scale="minor", bars=32, seed=7)
 print(song.summary())
 write_midi(song, "output/my_track.mid")
 ```
+
+---
+
+## 🖥️ Desktop GUI
+
+Prefer clicking to typing? `flautobot gui` opens a desktop window (Tkinter) that
+wraps everything — preset generation, the AI brief, the chat/refine loop and MIDI
+export — in one place.
+
+```bash
+python -m flautobot gui          # or, after `pip install -e .`:  flautobot-gui
+```
+
+- **Preset panel** — pick genre / key / scale / tempo / bars / seed and **Generate**.
+- **AI panel** — type a brief, choose **Claude** or **Ollama (offline)**,
+  **Design with AI**, then **Refine** it conversationally.
+- **Save MIDI / stems**, **▶ Play to FL Studio** (live), and **Open output folder**.
+
+Tkinter ships with standard Python. On some Linux setups it's a separate package:
+`sudo apt install python3-tk`.
 
 ---
 
@@ -252,6 +275,7 @@ flautobot/
 ├── ai.py            AI director: brief → Claude/Ollama → validated plan → render
 ├── midi_export.py   Song → Standard MIDI File(s) via mido
 ├── live.py          real-time MIDI streaming into FL Studio (python-rtmidi)
+├── gui.py           the desktop GUI (Tkinter), a thin shell over the engine
 └── cli.py           the `flautobot` command
 ```
 
@@ -267,7 +291,7 @@ A `seed` makes every part of the generation reproducible.
 
 ```bash
 pip install -r requirements.txt pytest
-pytest                 # 67 tests: theory, generators, arrangement, MIDI export, AI
+pytest                 # 79 tests: theory, generators, arrangement, MIDI, AI, GUI
 python examples/make_a_track.py
 ```
 

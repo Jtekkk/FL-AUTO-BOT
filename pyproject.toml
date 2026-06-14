@@ -25,6 +25,7 @@ dev = ["pytest>=7.0"]
 
 [project.scripts]
 flautobot = "flautobot.cli:main"
+flautobot-gui = "flautobot.gui:_console"
 
 [tool.setuptools.packages.find]
 include = ["flautobot*"]

@@ -246,6 +246,16 @@ def _cmd_ports(_args) -> int:
     return 0
 
 
+def _cmd_gui(_args) -> int:
+    from . import gui
+
+    try:
+        return gui.run()
+    except gui.GuiError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="flautobot",
@@ -292,6 +302,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ai.add_argument("--virtual", action="store_true", help="virtual MIDI port for --play")
     p_ai.set_defaults(func=_cmd_ai)
 
+    sub.add_parser("gui", help="launch the desktop GUI").set_defaults(func=_cmd_gui)
     sub.add_parser("genres", help="list available genres").set_defaults(func=_cmd_genres)
     sub.add_parser("ports", help="list MIDI output ports").set_defaults(func=_cmd_ports)
     return parser
@@ -300,7 +311,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"generate", "live", "genres", "ports", "ai"}
+    commands = {"generate", "live", "genres", "ports", "ai", "gui"}
     # Friendly default: bare args (e.g. `flautobot -g lofi`) imply `generate`.
     if not argv:
         argv = ["generate"]
