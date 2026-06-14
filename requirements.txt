@@ -1,0 +1,7 @@
+# Core dependency: read/write Standard MIDI Files (pure Python).
+mido>=1.3.0
+
+# Optional: live MIDI streaming into FL Studio via a virtual MIDI port.
+# Needed only for `flautobot live`. Safe to skip if you just export .mid files.
+# (On Linux it may require system packages like libasound2-dev / libjack-dev.)
+python-rtmidi>=1.5.0
