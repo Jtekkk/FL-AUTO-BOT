@@ -5,3 +5,7 @@ mido>=1.3.0
 # Needed only for `flautobot live`. Safe to skip if you just export .mid files.
 # (On Linux it may require system packages like libasound2-dev / libjack-dev.)
 python-rtmidi>=1.5.0
+
+# Optional: the AI music director (`flautobot ai "<brief>"`). Needs an API key
+# in ANTHROPIC_API_KEY. Skip if you only use the preset genres.
+anthropic>=0.40

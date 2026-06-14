@@ -16,6 +16,10 @@ hands the result to FL Studio three different ways:
 FL Studio is the instrument and renderer; the bot is the composer. This is a
 standard producer workflow — generate ideas, then mix/master/render them in FL.
 
+> 🤖 **Prefer plain English?** `flautobot ai "dark lofi beat at 72 bpm with a jazzy
+> progression"` lets **Claude** design the song (key, progression, arrangement) and
+> the engine render it. See [AI music director](#-ai-music-director-optional).
+
 ---
 
 ## Why MIDI?
@@ -31,14 +35,15 @@ channels so you keep full control of sounds, mixing and rendering.
 
 ```bash
 git clone <this repo> && cd FL-AUTO-BOT
-pip install -r requirements.txt      # mido (required) + python-rtmidi (live mode)
+pip install -r requirements.txt      # mido (required) + python-rtmidi (live) + anthropic (ai)
 
 # optional: install the `flautobot` command
 pip install -e .
 ```
 
-Requires Python 3.9+. `python-rtmidi` is only needed for **live** streaming; if
-you just export `.mid` files you can skip it.
+Requires Python 3.9+. Only `mido` is required. `python-rtmidi` is needed only for
+**live** streaming and `anthropic` only for the **AI** director — skip either if you
+don't use it (`pip install mido` covers MIDI export on its own).
 
 ---
 
@@ -56,6 +61,9 @@ python -m flautobot generate -g lofi -k F#m -b 16 --stems --seed 42
 
 # Stream a techno track straight into FL Studio (see "Live" below)
 python -m flautobot live -g techno -k E --virtual
+
+# Or just describe what you want and let Claude design it (see "AI" below)
+python -m flautobot ai "uplifting summer house in F# minor, 124 bpm"
 ```
 
 Output lands in `./output/`. Every run prints its `seed` so you can reproduce or
@@ -151,6 +159,53 @@ Override anything from the CLI: `--key`, `--scale`, `--tempo`, `--bars`,
 
 ---
 
+## 🤖 AI music director (optional)
+
+Describe a song in plain English and let **Claude** design it. The LLM does the
+*reasoning and creation* — it interprets your brief and authors a concrete plan
+(key, scale, tempo, an original chord progression, instrumentation, groove) — and
+the deterministic engine *renders* that plan to MIDI. You get the creativity of an
+LLM with output that's always musically valid and reproducible from a seed.
+
+```bash
+pip install anthropic                 # or: pip install -e ".[ai]"
+export ANTHROPIC_API_KEY=sk-ant-...
+
+python -m flautobot ai "dark, melancholic lofi beat around 72 bpm, jazzy chords"
+python -m flautobot ai "energetic festival house in F# minor, big drop" --stems
+python -m flautobot ai "spacey ambient, no drums, slow evolving pads" --plan-only
+python -m flautobot ai "driving techno at 132 bpm" --play --virtual   # into FL Studio
+```
+
+It prints the plan — including *why* Claude made each choice — then renders MIDI:
+
+```
+Midnight Coast
+  lofi | F# dorian | 72 BPM | 16 bars | progression 2-5-1-1
+  tracks: drums, bass, chords, melody | swing 0.2 | 7ths True
+  mood: nocturnal, wistful, warm
+  why: A ii-V-i in F# dorian gives a jazzy, unresolved feel that suits a
+       late-night lofi mood; sustained bass and swung drums keep it relaxed.
+```
+
+From Python:
+
+```python
+from flautobot.ai import AIDirector
+from flautobot import write_midi
+
+song, plan = AIDirector().compose("uplifting summer house in A minor, 124 bpm")
+print(plan.explanation)
+write_midi(song, "output/ai_track.mid")
+```
+
+Uses Claude (`claude-opus-4-8` by default; override with `--model`). The plan comes
+back as **validated structured JSON**, so it always maps cleanly onto the engine —
+out-of-range values are clamped, unknown genres fall back to sensible defaults. No
+API key? Everything else in FL Auto Bot still works; the AI layer is purely additive.
+
+---
+
 ## How it works
 
 ```
@@ -166,6 +221,7 @@ flautobot/
 │   ├── chords.py    pads / stabs with simple voice-leading
 │   ├── melody.py    chord-tone-anchored, stepwise, motif-based melodies
 │   └── arp.py       up / down / updown / random arpeggios
+├── ai.py            AI director: brief → Claude → validated plan → render
 ├── midi_export.py   Song → Standard MIDI File(s) via mido
 ├── live.py          real-time MIDI streaming into FL Studio (python-rtmidi)
 └── cli.py           the `flautobot` command
@@ -183,7 +239,7 @@ A `seed` makes every part of the generation reproducible.
 
 ```bash
 pip install -r requirements.txt pytest
-pytest                 # 52 tests: theory, generators, arrangement, MIDI export
+pytest                 # 61 tests: theory, generators, arrangement, MIDI export, AI
 python examples/make_a_track.py
 ```
 

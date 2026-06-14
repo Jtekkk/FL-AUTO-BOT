@@ -126,6 +126,54 @@ def _cmd_live(args) -> int:
     return 0
 
 
+def _safe_name(text: str) -> str:
+    s = text.lower().replace(" ", "_").replace("#", "s")
+    return "".join(c for c in s if c.isalnum() or c in "_-") or "ai_track"
+
+
+def _cmd_ai(args) -> int:
+    from . import ai as ai_mod
+
+    brief = " ".join(args.brief).strip()
+    seed = args.seed if args.seed is not None else random.randrange(1_000_000)
+    try:
+        director = ai_mod.AIDirector(model=args.model or ai_mod.DEFAULT_MODEL)
+        print(f"Asking {director.model} to design: {brief!r}\n")
+        if args.plan_only:
+            print(director.plan(brief).summary())
+            return 0
+        song, plan = director.compose(brief, seed=seed)
+    except ai_mod.AIError as exc:
+        print(f"AI error: {exc}", file=sys.stderr)
+        return 1
+
+    from .midi_export import write_midi, write_stems
+
+    out_path = Path(args.out) if args.out else \
+        Path("output") / f"{_safe_name(plan.title)}_seed{seed}.mid"
+    write_midi(song, out_path)
+
+    print(plan.summary())
+    print("\n" + song.summary())
+    print(f"\nseed: {seed}  (re-run with --seed {seed} to reproduce the render)")
+    print(f"MIDI: {out_path}")
+    if args.stems:
+        stem_dir = out_path.parent / (out_path.stem + "_stems")
+        paths = write_stems(song, stem_dir, out_path.stem)
+        print(f"Stems ({len(paths)}): {stem_dir}/")
+
+    if args.play:
+        from . import live
+        try:
+            target = args.port or ("virtual port" if args.virtual else "default port")
+            print(f"\nStreaming to {target} ... (Ctrl+C to stop)")
+            live.play_song(song, port_name=args.port, virtual=args.virtual)
+        except live.LiveError as exc:
+            print(f"\n{exc}", file=sys.stderr)
+            return 1
+    return 0
+
+
 def _cmd_ports(_args) -> int:
     from . import live
 
@@ -163,6 +211,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_live.add_argument("--list-ports", action="store_true", help="list ports and exit")
     p_live.set_defaults(func=_cmd_live)
 
+    p_ai = sub.add_parser(
+        "ai", help="describe a song in words; Claude designs it, then export MIDI")
+    p_ai.add_argument("brief", nargs="+",
+                      help='natural-language description, e.g. "dark lofi beat at 72 bpm"')
+    p_ai.add_argument("-o", "--out", default=None, help="output .mid path")
+    p_ai.add_argument("--stems", action="store_true", help="also write one .mid per track")
+    p_ai.add_argument("--seed", type=int, default=None, help="seed for the render step")
+    p_ai.add_argument("--model", default=None, help="Claude model (default: claude-opus-4-8)")
+    p_ai.add_argument("--plan-only", action="store_true",
+                      help="print the AI's plan without rendering MIDI")
+    p_ai.add_argument("--play", action="store_true",
+                      help="also stream the result into FL Studio over MIDI")
+    p_ai.add_argument("-p", "--port", default=None, help="MIDI port for --play")
+    p_ai.add_argument("--virtual", action="store_true", help="virtual MIDI port for --play")
+    p_ai.set_defaults(func=_cmd_ai)
+
     sub.add_parser("genres", help="list available genres").set_defaults(func=_cmd_genres)
     sub.add_parser("ports", help="list MIDI output ports").set_defaults(func=_cmd_ports)
     return parser
@@ -171,7 +235,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"generate", "live", "genres", "ports"}
+    commands = {"generate", "live", "genres", "ports", "ai"}
     # Friendly default: bare args (e.g. `flautobot -g lofi`) imply `generate`.
     if not argv:
         argv = ["generate"]
