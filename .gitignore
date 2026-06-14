@@ -9,6 +9,9 @@ dist/
 venv/
 env/
 
+# PyInstaller
+*.spec
+
 # Generated output
 output/
 *.mid

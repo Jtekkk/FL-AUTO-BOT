@@ -105,6 +105,25 @@ python -m flautobot gui          # or, after `pip install -e .`:  flautobot-gui
 Tkinter ships with standard Python. On some Linux setups it's a separate package:
 `sudo apt install python3-tk`.
 
+### Build a standalone app (`.exe`)
+
+Ship it as one double-clickable file — end users need no Python install.
+
+**In the cloud (easiest — gets a Windows `.exe` without a Windows machine):** open
+the repo's **Actions → "Build standalone app" → Run workflow**. It builds on Windows,
+macOS and Linux and uploads each as an artifact — `FLAutoBot-windows` contains
+`FLAutoBot.exe`. Pushing a `v*` tag triggers it too.
+
+**Locally** (PyInstaller can't cross-compile — run it on the OS you're targeting):
+
+```bash
+pip install pyinstaller -r requirements.txt
+python packaging/build_exe.py        # -> dist/FLAutoBot.exe   (or dist/FLAutoBot)
+```
+
+The result bundles Python, the engine, Tkinter and MIDI export — plus, best-effort,
+the AI and live-MIDI backends — into a single file.
+
 ---
 
 ## Getting it into FL Studio
